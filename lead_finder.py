@@ -3,7 +3,23 @@ import pandas as pd
 import os
 import sys
 import time
+import json
 import random
+from urllib.parse import urlparse
+
+
+def normalize_url(url):
+    """Normalize URL for consistent deduplication."""
+    if not url:
+        return ""
+    url = url.strip().rstrip('/')
+    if not url.startswith('http'):
+        url = 'https://' + url
+    parsed = urlparse(url)
+    host = parsed.netloc.lower().replace('www.', '')
+    path = parsed.path.rstrip('/')
+    return f"{parsed.scheme}://{host}{path}"
+
 
 def search_duckduckgo(query, max_results=10):
     try:
@@ -19,22 +35,21 @@ def search_duckduckgo(query, max_results=10):
         ddgs_results = DDGS().text(query, max_results=max_results * 2)
         if ddgs_results:
             junk_url_patterns = ['/blog', '/article', '/post', '/news', '/directory', '/top-10', '/best-']
-            
+
             for r in ddgs_results:
                 href = r.get("href", "").lower()
-                
-                # Skip URLs that look like blog posts or articles
+
                 if any(junk in href for junk in junk_url_patterns):
                     continue
                 if any(domain in href for domain in ['wikipedia.org', 'reddit.com', 'yelp.', 'yellowpages.']):
                     continue
-                    
+
                 results.append({
                     "Company Name": r.get("title", ""),
-                    "Website URL":  r.get("href", ""),
+                    "Website URL":  normalize_url(r.get("href", "")),
                     "Source":       "DuckDuckGo"
                 })
-                
+
                 if len(results) >= max_results:
                     break
 
@@ -74,7 +89,11 @@ def search_google_maps(query, api_key):
             website = place.get('websiteUri', '')
             name = place.get('displayName', {}).get('text', '')
             if website:
-                results.append({"Company Name": name, "Website URL": website, "Source": "Google Maps"})
+                results.append({
+                    "Company Name": name,
+                    "Website URL": normalize_url(website),
+                    "Source": "Google Maps",
+                })
         print(f"Google Maps returned {len(results)} results.")
     except Exception as e:
         print(f"ERROR: Google Maps API error: {e}")
@@ -101,7 +120,11 @@ def search_serpapi(query, api_key, limit=20):
         search = GoogleSearch(params)
         results_data = search.get_dict()
         for r in results_data.get('organic_results', []):
-            results.append({"Company Name": r.get("title", ""), "Website URL": r.get("link", ""), "Source": "SerpApi"})
+            results.append({
+                "Company Name": r.get("title", ""),
+                "Website URL": normalize_url(r.get("link", "")),
+                "Source": "SerpApi",
+            })
         print(f"SerpApi returned {len(results)} results.")
     except Exception as e:
         print(f"ERROR: SerpApi error: {e}")
@@ -115,7 +138,6 @@ def search_gemini(query, api_key, limit=20):
         return []
 
     import requests
-    import json
 
     print(f"Using Gemini AI to discover leads for: {query} (Limit: {limit})")
 
@@ -132,12 +154,15 @@ Return ONLY a valid JSON array like this:
 ]
 Return ONLY the JSON array, no other text."""
 
-    # Use gemini-3-flash-preview for lead discovery
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key={api_key}"
+    # Use gemini-2.0-flash with structured JSON output
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
     headers = {'Content-Type': 'application/json'}
     data = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.2}
+        "generationConfig": {
+            "temperature": 0.2,
+            "responseMimeType": "application/json",
+        }
     }
 
     for attempt in range(3):
@@ -155,7 +180,7 @@ Return ONLY the JSON array, no other text."""
                 return []
 
             text = result['candidates'][0]['content']['parts'][0]['text']
-            # Strip markdown code fences if present
+            # With responseMimeType, should be clean JSON already
             text = text.strip()
             if text.startswith("```"):
                 text = text.split("```")[1]
@@ -168,13 +193,17 @@ Return ONLY the JSON array, no other text."""
                 print("ERROR: Gemini did not return a list.")
                 return []
 
-            # Ensure correct keys
+            # Ensure correct keys and normalize URLs
             cleaned = []
             for l in leads:
                 name = l.get("Company Name") or l.get("company_name") or l.get("name") or ""
                 url_val = l.get("Website URL") or l.get("website_url") or l.get("url") or l.get("website") or ""
                 if name:
-                    cleaned.append({"Company Name": name, "Website URL": url_val, "Source": "Gemini AI"})
+                    cleaned.append({
+                        "Company Name": name,
+                        "Website URL": normalize_url(url_val),
+                        "Source": "Gemini AI",
+                    })
 
             print(f"Gemini discovered {len(cleaned)} leads.")
             return cleaned
@@ -217,10 +246,13 @@ def main():
 
     if leads:
         new_df = pd.DataFrame(leads)
+        # Normalize URLs for consistent dedup
+        new_df['Website URL'] = new_df['Website URL'].apply(normalize_url)
 
-        # Append to existing leads and deduplicate by URL
+        # Append to existing leads and deduplicate by normalized URL
         if os.path.exists(args.output):
             existing_df = pd.read_csv(args.output)
+            existing_df['Website URL'] = existing_df['Website URL'].apply(normalize_url)
             combined_df = pd.concat([existing_df, new_df], ignore_index=True)
             combined_df = combined_df.drop_duplicates(subset=["Website URL"], keep="first")
             combined_df.to_csv(args.output, index=False)
