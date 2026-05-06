@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import subprocess
 import os
+import sys
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -369,11 +370,11 @@ if run_full:
         clear_old_data()
         st.session_state["last_error"] = None
         with st.status("🚀 Full Pipeline Running...", expanded=True) as status:
-            ok1 = run_and_stream(["python","lead_finder.py","--query",search_query,"--source",search_source,"--limit",str(lead_limit)], "STEP 1 — FINDING LEADS")
+            ok1 = run_and_stream([sys.executable,"lead_finder.py","--query",search_query,"--source",search_source,"--limit",str(lead_limit)], "STEP 1 — FINDING LEADS")
             if ok1:
-                ok2 = run_and_stream(["python","deep_diver.py"], "STEP 2 — SCRAPING WEBSITES")
+                ok2 = run_and_stream([sys.executable,"deep_diver.py"], "STEP 2 — SCRAPING WEBSITES")
                 if ok2:
-                    ok3 = run_and_stream(["python","ai_analyzer.py"], "STEP 3 — AI DEEP ANALYSIS")
+                    ok3 = run_and_stream([sys.executable,"ai_analyzer.py"], "STEP 3 — AI DEEP ANALYSIS")
                     if ok3:
                         status.update(label="✅ Pipeline Complete", state="complete")
                         st.toast("Intelligence ready!", icon="🎉")
@@ -385,7 +386,7 @@ elif run_finder:
         # No clear — APPEND to existing leads
         st.session_state["last_error"] = None
         with st.status("Finding Leads...", expanded=True):
-            run_and_stream(["python","lead_finder.py","--query",search_query,"--source",search_source,"--limit",str(lead_limit)], "FINDING LEADS")
+            run_and_stream([sys.executable,"lead_finder.py","--query",search_query,"--source",search_source,"--limit",str(lead_limit)], "FINDING LEADS")
         st.rerun()
 
 elif run_diver:
@@ -393,7 +394,7 @@ elif run_diver:
     else:
         st.session_state["last_error"] = None
         with st.status("Scraping Websites...", expanded=True):
-            run_and_stream(["python","deep_diver.py"], "SCRAPING WEBSITES")
+            run_and_stream([sys.executable,"deep_diver.py"], "SCRAPING WEBSITES")
         st.rerun()
 
 elif run_analyzer:
@@ -401,7 +402,7 @@ elif run_analyzer:
     else:
         st.session_state["last_error"] = None
         with st.status("AI Analyzing...", expanded=True):
-            run_and_stream(["python","ai_analyzer.py"], "AI DEEP EXTRACTION")
+            run_and_stream([sys.executable,"ai_analyzer.py"], "AI DEEP EXTRACTION")
         st.rerun()
 
 # ─── METRICS ROW ─────────────────────────────────────────────────────────────
