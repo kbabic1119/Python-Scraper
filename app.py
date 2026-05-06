@@ -221,12 +221,46 @@ button[kind="primary"] {
     background: #080e1f; border: 1px solid #0e2040; margin-bottom: 12px;
     display: block;
 }
+
+/* Pipeline tracker */
+.pipeline-tracker {
+    display: flex; align-items: center; gap: 0; margin: 12px 0 18px 0;
+    font-family: 'JetBrains Mono', monospace; font-size: 0.72rem;
+}
+.pipe-step {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 8px;
+    border: 1px solid #0e2040; background: #0a1020; color: #2a3a5a;
+}
+.pipe-step.done { background: #001a10; color: #00ffa3; border-color: #00ffa344; }
+.pipe-step.active { background: #001a30; color: #00d4ff; border-color: #00d4ff44; }
+.pipe-arrow { color: #1a2a40; margin: 0 4px; font-size: 1rem; }
+
+/* Summary stat pills */
+.summary-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.summary-pill {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 8px; font-size: 0.75rem;
+    font-family: 'JetBrains Mono', monospace;
+    border: 1px solid #0e2040; background: #0a1020; color: #6a8aaa;
+}
+.summary-pill .sp-num { font-weight: 700; font-size: 0.9rem; }
+.summary-pill.hot .sp-num { color: #00ff88; }
+.summary-pill.email .sp-num { color: #00d4ff; }
+.summary-pill.phone .sp-num { color: #ffb800; }
+.summary-pill.social .sp-num { color: #bf7fff; }
+
+/* Pagination */
+.pagination-row {
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+    margin: 18px 0; font-family: 'JetBrains Mono', monospace;
+}
 </style>
 """, unsafe_allow_html=True)
 
 # ─── HEADER ──────────────────────────────────────────────────────────────────
 st.markdown("<h1>⬡ AI LEAD INTELLIGENCE ENGINE</h1>", unsafe_allow_html=True)
-st.markdown("<p style='color:#4a6080; font-family:JetBrains Mono,monospace; font-size:0.78rem; letter-spacing:2px; margin-top:-10px;'>DEEP EXTRACTION SYSTEM v3.0 // GEMINI POWERED // AUTOMATION SCORING</p>", unsafe_allow_html=True)
+st.markdown("<p style='color:#4a6080; font-family:JetBrains Mono,monospace; font-size:0.78rem; letter-spacing:2px; margin-top:-10px;'>DEEP EXTRACTION SYSTEM v4.0 // GEMINI POWERED // AUTOMATION SCORING</p>", unsafe_allow_html=True)
 
 # ─── SIDEBAR ─────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -241,6 +275,27 @@ with st.sidebar:
         load_dotenv(override=True)
 
     st.markdown("---")
+
+    # ── PIPELINE STATUS TRACKER ────────────────────────────────────────
+    st.markdown("<p style='font-family:JetBrains Mono,monospace;color:#00d4ff;font-size:0.8rem;letter-spacing:2px;'>// PIPELINE STATUS</p>", unsafe_allow_html=True)
+    has_leads    = os.path.exists("leads.csv") and os.path.getsize("leads.csv") > 0
+    has_enriched = os.path.exists("enriched_leads.csv") and os.path.getsize("enriched_leads.csv") > 0
+    has_analyzed = os.path.exists("deep_extracted_leads.csv") and os.path.getsize("deep_extracted_leads.csv") > 0
+
+    step1_cls = "done" if has_leads else ""
+    step2_cls = "done" if has_enriched else ""
+    step3_cls = "done" if has_analyzed else ""
+
+    st.markdown(f"""
+    <div class='pipeline-tracker'>
+        <div class='pipe-step {step1_cls}'>{"✓ " if has_leads else ""}1. Find</div>
+        <span class='pipe-arrow'>→</span>
+        <div class='pipe-step {step2_cls}'>{"✓ " if has_enriched else ""}2. Scrape</div>
+        <span class='pipe-arrow'>→</span>
+        <div class='pipe-step {step3_cls}'>{"✓ " if has_analyzed else ""}3. Analyze</div>
+    </div>
+    """, unsafe_allow_html=True)
+
     st.markdown("<p style='font-family:JetBrains Mono,monospace;color:#00d4ff;font-size:0.8rem;letter-spacing:2px;'>// DATA STATUS</p>", unsafe_allow_html=True)
     for fname, label, color in [
         ("leads.csv",               "leads.csv",               "#00d4ff"),
@@ -270,7 +325,7 @@ with st.sidebar:
 
 # ─── SOURCE CONFIG ───────────────────────────────────────────────────────────
 SOURCE_CONFIG = {
-    "gemini":      {"label": "🤖 Gemini AI",    "min": 5, "max": 200, "default": 50,  "cls": "active-gemini", "desc": "Uses Gemini 3 Flash to discover leads — no IP blocks, works globally, 200 leads/call."},
+    "gemini":      {"label": "🤖 Gemini AI",    "min": 5, "max": 200, "default": 50,  "cls": "active-gemini", "desc": "Uses Gemini AI to discover leads — no IP blocks, works globally, 200 leads/call."},
     "google_maps": {"label": "🗺 Google Maps",  "min": 5, "max": 20,  "default": 20,  "cls": "active-maps",   "desc": "Real verified local businesses with addresses. Hard limit: 20 results per API call."},
     "duckduckgo":  {"label": "🦆 DuckDuckGo",   "min": 5, "max": 100, "default": 30,  "cls": "active-ddg",    "desc": "Free web search — no API key needed. May hit rate limits depending on your IP."},
     "serpapi":     {"label": "🔎 SerpApi",       "min": 5, "max": 100, "default": 50,  "cls": "active-serp",   "desc": "Paid Google search API — most reliable. Requires a SerpApi key set in .env."},
@@ -278,6 +333,8 @@ SOURCE_CONFIG = {
 
 if "search_source" not in st.session_state:
     st.session_state["search_source"] = "gemini"
+if "page" not in st.session_state:
+    st.session_state["page"] = 0
 
 # ─── PIPELINE CONTROL ────────────────────────────────────────────────────────
 with st.container(border=True):
@@ -330,25 +387,40 @@ if "last_error" not in st.session_state: st.session_state["last_error"] = None
 if st.session_state["last_error"]:
     col_e, col_btn = st.columns([5,1])
     with col_e:
-        st.error(f"❌ **Error:** {st.session_state['last_error']}")
+        st.error(f"**Error:** {st.session_state['last_error']}")
     with col_btn:
-        if st.button("✕ Dismiss"):
+        if st.button("Dismiss"):
             st.session_state["last_error"] = None
             st.rerun()
 
-def run_and_stream(cmd, label):
+def run_and_stream(cmd, label, progress_bar=None, step_num=0, total_steps=3):
+    """Run a subprocess and stream output. Updates progress bar if provided."""
     st.markdown(f"<p style='font-family:JetBrains Mono,monospace;color:#00d4ff;font-size:0.8rem;'>> {label}</p>", unsafe_allow_html=True)
     log_box = st.empty()
     log_lines = []
     try:
         proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 text=True, encoding="utf-8", errors="ignore", bufsize=1)
+
+        line_count = 0
         for line in proc.stdout:
             s = line.strip()
             if s:
                 log_lines.append(s)
                 log_box.code("\n".join(log_lines[-20:]))
+                line_count += 1
+
+                # Update progress bar based on step and line output
+                if progress_bar is not None:
+                    base_progress = (step_num - 1) / total_steps
+                    # Estimate within-step progress (cap at 90% of step)
+                    step_progress = min(0.9, line_count / max(line_count + 5, 20))
+                    progress_bar.progress(min(0.99, base_progress + step_progress / total_steps))
+
         proc.wait()
+        if progress_bar is not None:
+            progress_bar.progress(min(0.99, step_num / total_steps))
+
         if proc.returncode != 0:
             err = next((l for l in reversed(log_lines) if "ERROR" in l or "FAILED" in l), "Unknown error")
             st.session_state["last_error"] = err
@@ -370,23 +442,29 @@ if run_full:
         clear_old_data()
         st.session_state["last_error"] = None
         with st.status("🚀 Full Pipeline Running...", expanded=True) as status:
-            ok1 = run_and_stream([sys.executable,"lead_finder.py","--query",search_query,"--source",search_source,"--limit",str(lead_limit)], "STEP 1 — FINDING LEADS")
+            progress_bar = st.progress(0)
+            st.markdown("<p style='font-family:JetBrains Mono,monospace;color:#4a6080;font-size:0.72rem;'>Step 1/3: Finding leads...</p>", unsafe_allow_html=True)
+            ok1 = run_and_stream([sys.executable,"lead_finder.py","--query",search_query,"--source",search_source,"--limit",str(lead_limit)], "STEP 1 — FINDING LEADS", progress_bar, 1)
             if ok1:
-                ok2 = run_and_stream([sys.executable,"deep_diver.py"], "STEP 2 — SCRAPING WEBSITES")
+                st.markdown("<p style='font-family:JetBrains Mono,monospace;color:#4a6080;font-size:0.72rem;'>Step 2/3: Scraping websites...</p>", unsafe_allow_html=True)
+                ok2 = run_and_stream([sys.executable,"deep_diver.py"], "STEP 2 — SCRAPING WEBSITES", progress_bar, 2)
                 if ok2:
-                    ok3 = run_and_stream([sys.executable,"ai_analyzer.py"], "STEP 3 — AI DEEP ANALYSIS")
+                    st.markdown("<p style='font-family:JetBrains Mono,monospace;color:#4a6080;font-size:0.72rem;'>Step 3/3: AI analysis...</p>", unsafe_allow_html=True)
+                    ok3 = run_and_stream([sys.executable,"ai_analyzer.py"], "STEP 3 — AI DEEP ANALYSIS", progress_bar, 3)
                     if ok3:
-                        status.update(label="✅ Pipeline Complete", state="complete")
+                        progress_bar.progress(1.0)
+                        status.update(label="Pipeline Complete", state="complete")
                         st.toast("Intelligence ready!", icon="🎉")
         st.rerun()
 
 elif run_finder:
     if not search_query: st.error("Enter a search query first.")
     else:
-        # No clear — APPEND to existing leads
         st.session_state["last_error"] = None
         with st.status("Finding Leads...", expanded=True):
-            run_and_stream([sys.executable,"lead_finder.py","--query",search_query,"--source",search_source,"--limit",str(lead_limit)], "FINDING LEADS")
+            progress_bar = st.progress(0)
+            run_and_stream([sys.executable,"lead_finder.py","--query",search_query,"--source",search_source,"--limit",str(lead_limit)], "FINDING LEADS", progress_bar, 1, 1)
+            progress_bar.progress(1.0)
         st.rerun()
 
 elif run_diver:
@@ -394,7 +472,9 @@ elif run_diver:
     else:
         st.session_state["last_error"] = None
         with st.status("Scraping Websites...", expanded=True):
-            run_and_stream([sys.executable,"deep_diver.py"], "SCRAPING WEBSITES")
+            progress_bar = st.progress(0)
+            run_and_stream([sys.executable,"deep_diver.py"], "SCRAPING WEBSITES", progress_bar, 1, 1)
+            progress_bar.progress(1.0)
         st.rerun()
 
 elif run_analyzer:
@@ -402,7 +482,9 @@ elif run_analyzer:
     else:
         st.session_state["last_error"] = None
         with st.status("AI Analyzing...", expanded=True):
-            run_and_stream([sys.executable,"ai_analyzer.py"], "AI DEEP EXTRACTION")
+            progress_bar = st.progress(0)
+            run_and_stream([sys.executable,"ai_analyzer.py"], "AI DEEP EXTRACTION", progress_bar, 1, 1)
+            progress_bar.progress(1.0)
         st.rerun()
 
 # ─── METRICS ROW ─────────────────────────────────────────────────────────────
@@ -450,15 +532,16 @@ if df is not None and len(df) > 0:
         st.markdown("<p style='font-family:JetBrains Mono,monospace;color:#00d4ff;font-size:0.8rem;letter-spacing:2px;'>// MARKET PULSE</p>", unsafe_allow_html=True)
         v1, v2 = st.columns([3, 2])
         with v1:
-            # Score distribution chart
             counts = df['Automation Score'].value_counts().sort_index()
-            # Ensure all scores 1-10 are present for better visual
             full_counts = pd.Series(0, index=range(1, 11)).add(counts, fill_value=0)
             st.bar_chart(full_counts, color="#00d4ff")
         with v2:
-            # Market Heat Gauge
-            avg_score = df['Automation Score'].astype(float).mean()
-            hot_count = len(df[df['Automation Score'].astype(float) >= 8])
+            try:
+                avg_score = pd.to_numeric(df['Automation Score'], errors='coerce').mean()
+                hot_count = len(df[pd.to_numeric(df['Automation Score'], errors='coerce') >= 8])
+            except Exception:
+                avg_score = 0
+                hot_count = 0
             st.markdown(f"""
             <div style='background:rgba(0,212,255,0.05); border:1px solid #0e2a50; border-radius:12px; padding:20px; text-align:center;'>
                 <div style='font-size:0.7rem; color:#4a6080; letter-spacing:1px;'>MARKET TEMPERATURE</div>
@@ -468,7 +551,30 @@ if df is not None and len(df) > 0:
             """, unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
 
-    # Header + download + search filter
+    # ── SUMMARY STATS ROW ─────────────────────────────────────────────
+    def is_valid(v):
+        return str(v).strip() not in ["", "N/A", "nan", "None", "NaN"]
+
+    email_count = sum(1 for _, r in df.iterrows() if is_valid(r.get('Emails', '')))
+    phone_count = sum(1 for _, r in df.iterrows() if is_valid(r.get('Phones', '')))
+    social_count = sum(1 for _, r in df.iterrows() if any(is_valid(r.get(k, '')) for k in ['FB', 'LI', 'IG']))
+    hot_leads_count = 0
+    if data_label == "deep_extracted":
+        try:
+            hot_leads_count = len(df[pd.to_numeric(df['Automation Score'], errors='coerce') >= 8])
+        except Exception:
+            pass
+
+    st.markdown(f"""
+    <div class='summary-row'>
+        <div class='summary-pill hot'><span class='sp-num'>{hot_leads_count}</span> Hot Leads (8+)</div>
+        <div class='summary-pill email'><span class='sp-num'>{email_count}</span> With Email</div>
+        <div class='summary-pill phone'><span class='sp-num'>{phone_count}</span> With Phone</div>
+        <div class='summary-pill social'><span class='sp-num'>{social_count}</span> With Socials</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── HEADER + CONTROLS ─────────────────────────────────────────────
     r1, r2, r3 = st.columns([2,2,1])
     with r1:
         badge_map = {
@@ -476,7 +582,7 @@ if df is not None and len(df) > 0:
             "enriched":       "<span class='step-badge step-scraped'>🌐 SCRAPED</span>",
             "raw":            "<span class='step-badge step-found'>🔍 RAW LEADS</span>",
         }
-        st.markdown(f"### 📋 Lead Database &nbsp; {badge_map[data_label]}", unsafe_allow_html=True)
+        st.markdown(f"### Lead Database &nbsp; {badge_map[data_label]}", unsafe_allow_html=True)
     with r2:
         filter_text = st.text_input("🔎 Filter leads", placeholder="Filter by name, URL...", label_visibility="collapsed")
     with r3:
@@ -484,26 +590,89 @@ if df is not None and len(df) > 0:
         fname_map = {"deep_extracted":"deep_extracted_leads.csv","enriched":"enriched_leads.csv","raw":"leads.csv"}
         st.download_button("⬇️ Export CSV", data=csv_bytes, file_name=fname_map[data_label], mime="text/csv", use_container_width=True)
 
-    # Apply filter
+    # ── SORT + FILTER CONTROLS ────────────────────────────────────────
+    ctrl1, ctrl2, ctrl3 = st.columns([2, 2, 2])
+    with ctrl1:
+        sort_options = ["Score (High→Low)", "Score (Low→High)", "Name A-Z", "Name Z-A"]
+        sort_choice = st.selectbox("Sort by", sort_options, index=0, label_visibility="collapsed")
+    with ctrl2:
+        if data_label == "deep_extracted":
+            min_score = st.slider("Min Automation Score", 1, 10, 1, help="Filter leads by minimum automation score")
+        else:
+            min_score = 1
+    with ctrl3:
+        ITEMS_PER_PAGE = st.selectbox("Leads per page", [6, 12, 24, 48], index=1, label_visibility="visible")
+
+    # Apply text filter
     if filter_text:
         mask = df.apply(lambda row: row.astype(str).str.contains(filter_text, case=False).any(), axis=1)
         df = df[mask]
 
-    # ── CARD GRID ─────────────────────────────────────────────────────────
-    def is_valid(v):
-        return str(v).strip() not in ["", "N/A", "nan", "None", "NaN"]
+    # Apply score filter
+    if data_label == "deep_extracted" and min_score > 1:
+        df['_score_num'] = pd.to_numeric(df['Automation Score'], errors='coerce').fillna(0)
+        df = df[df['_score_num'] >= min_score]
+        if '_score_num' in df.columns:
+            df = df.drop(columns=['_score_num'])
 
+    # Apply sorting
+    if data_label == "deep_extracted" and 'Automation Score' in df.columns:
+        df['_sort_score'] = pd.to_numeric(df['Automation Score'], errors='coerce').fillna(0)
+        if sort_choice == "Score (High→Low)":
+            df = df.sort_values('_sort_score', ascending=False)
+        elif sort_choice == "Score (Low→High)":
+            df = df.sort_values('_sort_score', ascending=True)
+        elif sort_choice == "Name A-Z":
+            df = df.sort_values('Company Name', ascending=True, na_position='last')
+        elif sort_choice == "Name Z-A":
+            df = df.sort_values('Company Name', ascending=False, na_position='last')
+        df = df.drop(columns=['_sort_score'])
+    elif sort_choice in ("Name A-Z", "Name Z-A") and 'Company Name' in df.columns:
+        df = df.sort_values('Company Name', ascending=(sort_choice == "Name A-Z"), na_position='last')
+
+    # ── PAGINATION ────────────────────────────────────────────────────
+    total_items = len(df)
+    total_pages = max(1, (total_items + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE)
+
+    # Clamp page to valid range
+    if st.session_state["page"] >= total_pages:
+        st.session_state["page"] = total_pages - 1
+    if st.session_state["page"] < 0:
+        st.session_state["page"] = 0
+
+    current_page = st.session_state["page"]
+    start_idx = current_page * ITEMS_PER_PAGE
+    end_idx = min(start_idx + ITEMS_PER_PAGE, total_items)
+
+    # Pagination controls (top)
+    if total_pages > 1:
+        pg_left, pg_info, pg_right = st.columns([1, 3, 1])
+        with pg_left:
+            if st.button("← Prev", use_container_width=True, disabled=(current_page == 0)):
+                st.session_state["page"] = max(0, current_page - 1)
+                st.rerun()
+        with pg_info:
+            st.markdown(f"<div style='text-align:center;font-family:JetBrains Mono,monospace;color:#4a6080;font-size:0.78rem;padding-top:8px;'>Page {current_page+1} of {total_pages} &nbsp;·&nbsp; Showing {start_idx+1}-{end_idx} of {total_items} leads</div>", unsafe_allow_html=True)
+        with pg_right:
+            if st.button("Next →", use_container_width=True, disabled=(current_page >= total_pages - 1)):
+                st.session_state["page"] = min(total_pages - 1, current_page + 1)
+                st.rerun()
+
+    # Slice to current page
+    page_df = df.iloc[start_idx:end_idx]
+
+    # ── CARD GRID ─────────────────────────────────────────────────────
     def score_class(score):
         try:
             s = int(score)
             if s >= 8: return "score-hot",  f"🔥 {s}/10"
             if s >= 5: return "score-mid",  f"⚡ {s}/10"
             return           "score-low",  f"❄ {s}/10"
-        except:
+        except Exception:
             return "score-none", "· /10"
 
     cols_per_row = 3
-    chunks = [df.iloc[i:i+cols_per_row] for i in range(0, len(df), cols_per_row)]
+    chunks = [page_df.iloc[i:i+cols_per_row] for i in range(0, len(page_df), cols_per_row)]
 
     for chunk in chunks:
         cols = st.columns(cols_per_row)
@@ -517,6 +686,8 @@ if df is not None and len(df) > 0:
                 fb       = str(lead.get("FB","") or lead.get("FB Extracted",""))
                 li       = str(lead.get("LI","") or lead.get("LI Extracted",""))
                 ig       = str(lead.get("IG","") or lead.get("IG Extracted",""))
+                tw       = str(lead.get("TW",""))
+                yt       = str(lead.get("YT",""))
                 score    = str(lead.get("Automation Score",""))
                 reason   = str(lead.get("Score Reason",""))
                 pain     = str(lead.get("Pain Points",""))
@@ -547,11 +718,13 @@ if df is not None and len(df) > 0:
                         if p:
                             phone_pills += f"<a href='tel:{p.replace(' ','')}' class='info-pill has-data' style='text-decoration:none;'>📞 {p[:20]}</a> "
 
-                fb_pill = f"<a href='{fb}' target='_blank' class='info-pill social' style='text-decoration:none;'>f&nbsp;Facebook</a>" if is_valid(fb) else ""
-                li_pill = f"<a href='{li}' target='_blank' class='info-pill social' style='text-decoration:none;'>in LinkedIn</a>"  if is_valid(li) else ""
-                ig_pill = f"<a href='{ig}' target='_blank' class='info-pill social' style='text-decoration:none;'>◎ Instagram</a>" if is_valid(ig) else ""
+                fb_pill = f"<a href='{fb}' target='_blank' class='info-pill social' style='text-decoration:none;'>f&nbsp;FB</a>" if is_valid(fb) else ""
+                li_pill = f"<a href='{li}' target='_blank' class='info-pill social' style='text-decoration:none;'>in LI</a>"  if is_valid(li) else ""
+                ig_pill = f"<a href='{ig}' target='_blank' class='info-pill social' style='text-decoration:none;'>◎ IG</a>" if is_valid(ig) else ""
+                tw_pill = f"<a href='{tw}' target='_blank' class='info-pill social' style='text-decoration:none;'>𝕏 TW</a>" if is_valid(tw) else ""
+                yt_pill = f"<a href='{yt}' target='_blank' class='info-pill social' style='text-decoration:none;'>▶ YT</a>" if is_valid(yt) else ""
 
-                all_pills = email_pills + phone_pills + fb_pill + li_pill + ig_pill
+                all_pills = email_pills + phone_pills + fb_pill + li_pill + ig_pill + tw_pill + yt_pill
                 if not all_pills:
                     all_pills = "<span style='color:#2a3a5a;font-size:0.7rem;font-family:JetBrains Mono,monospace;'>NO CONTACT DATA — Run Scrape Sites</span>"
 
@@ -560,11 +733,11 @@ if df is not None and len(df) > 0:
                     if not is_valid(value): return ""
                     return f"<div class='intel-row'><div class='intel-label'>{label}</div><div class='intel-value {cls}'>{value}</div></div>"
 
-                intel_html  = irow("🏗️ TECH STACK",              lead.get("tech_stack", ""), "highlight")
-                intel_html += irow("👤 DECISION MAKER",          dm)
-                intel_html += irow("📊 BUSINESS MATURITY",       maturity)
-                intel_html += irow("⚠️ PAIN POINTS",             pain)
-                intel_html += irow("💡 OPPORTUNITIES",           opps)
+                intel_html  = irow("TECH STACK",              lead.get("tech_stack", ""), "highlight")
+                intel_html += irow("DECISION MAKER",          dm)
+                intel_html += irow("BUSINESS MATURITY",       maturity)
+                intel_html += irow("PAIN POINTS",             pain)
+                intel_html += irow("OPPORTUNITIES",           opps)
 
                 # ── RENDER CARD ───────────────────────────────────────────
                 pulse_cls = "pulse-hot" if s_label.startswith("🔥") else ""
@@ -580,28 +753,57 @@ if df is not None and len(df) > 0:
                 </div>
                 """, unsafe_allow_html=True)
 
-                # --- Outreach Lab Tabs ---
+                # --- Expandable Details (Collapsible) ---
                 if data_label == "deep_extracted":
-                    t1, t2 = st.tabs(["🧠 Intelligence", "✉️ Outreach Lab"])
-                    with t1:
+                    with st.expander(f"🧠 Intel & Outreach — {name[:30]}", expanded=False):
+                        tab1, tab2 = st.tabs(["Intelligence", "Outreach Lab"])
+                        with tab1:
+                            st.markdown(f"<div class='intel-section'>{intel_html}</div>", unsafe_allow_html=True)
+                            if is_valid(reason):
+                                st.info(f"**AI Reason:** {reason}")
+                        with tab2:
+                            subject = lead.get("outreach_subject", "Quick Question")
+                            email_draft = lead.get("outreach_email_draft", "Hi, noticed you might need some help with automation.")
+                            st.markdown(f"<div class='intel-label'>SUBJECT:</div><code style='color:#00ffa3;'>{subject}</code>", unsafe_allow_html=True)
+                            edited_draft = st.text_area("Draft:", email_draft, height=120, key=f"draft_{name}_{start_idx}")
+
+                            # Functional copy button using st.code
+                            st.markdown("<div class='intel-label'>COPY-READY EMAIL:</div>", unsafe_allow_html=True)
+                            full_email = f"Subject: {subject}\n\n{edited_draft}"
+                            st.code(full_email, language=None)
+
+                            st.markdown(f"<div class='outreach-quote'>Hook: {outreach}</div>", unsafe_allow_html=True)
+                elif data_label in ("enriched", "raw") and intel_html:
+                    with st.expander(f"Details — {name[:30]}", expanded=False):
                         st.markdown(f"<div class='intel-section'>{intel_html}</div>", unsafe_allow_html=True)
-                        if is_valid(reason):
-                            st.info(f"**AI Reason:** {reason}")
-                    with t2:
-                        subject = lead.get("outreach_subject", "Quick Question")
-                        email_draft = lead.get("outreach_email_draft", "Hi, noticed you might need some help with automation.")
-                        st.markdown(f"<div class='intel-label'>SUBJECT:</div><code style='color:#00ffa3;'>{subject}</code>", unsafe_allow_html=True)
-                        st.text_area("Draft:", email_draft, height=120, key=f"draft_{name}")
-                        st.markdown(f"<div class='outreach-quote'>Hook: {outreach}</div>", unsafe_allow_html=True)
-                        st.button("📋 Copy Template", key=f"cp_{name}")
-                else:
-                    st.markdown(f"<div class='intel-section'>{intel_html}</div>", unsafe_allow_html=True)
+
+    # Pagination controls (bottom)
+    if total_pages > 1:
+        pg_left2, pg_info2, pg_right2 = st.columns([1, 3, 1])
+        with pg_left2:
+            if st.button("← Prev ", use_container_width=True, disabled=(current_page == 0), key="prev_bottom"):
+                st.session_state["page"] = max(0, current_page - 1)
+                st.rerun()
+        with pg_info2:
+            st.markdown(f"<div style='text-align:center;font-family:JetBrains Mono,monospace;color:#4a6080;font-size:0.78rem;padding-top:8px;'>Page {current_page+1} of {total_pages}</div>", unsafe_allow_html=True)
+        with pg_right2:
+            if st.button("Next → ", use_container_width=True, disabled=(current_page >= total_pages - 1), key="next_bottom"):
+                st.session_state["page"] = min(total_pages - 1, current_page + 1)
+                st.rerun()
 
 else:
+    # ── IMPROVED EMPTY STATE ──────────────────────────────────────────
     st.markdown("""
 <div style='text-align:center;padding:60px 20px;border:1px dashed #0e2040;border-radius:16px;margin-top:20px;'>
   <p style='font-family:JetBrains Mono,monospace;color:#1a3060;font-size:3rem;margin:0;'>⬡</p>
   <p style='font-family:JetBrains Mono,monospace;color:#00d4ff;font-size:1rem;letter-spacing:3px;'>AWAITING INPUT</p>
-  <p style='color:#2a4060;font-size:0.85rem;'>Enter a query above and click <strong style='color:#4a80c0'>Find Leads</strong> to begin.</p>
+  <p style='color:#2a4060;font-size:0.85rem;'>Enter a query above and click <strong style='color:#4a80c0'>Find Leads</strong> or <strong style='color:#4a80c0'>Full Pipeline</strong> to begin.</p>
+  <div style='margin-top:20px; text-align:left; max-width:500px; margin-left:auto; margin-right:auto;'>
+    <p style='font-family:JetBrains Mono,monospace;color:#4a6080;font-size:0.72rem;letter-spacing:1px;margin-bottom:8px;'>EXAMPLE QUERIES:</p>
+    <p style='color:#3a5a80;font-size:0.82rem;margin:4px 0;'>• HVAC companies Oslo Norway</p>
+    <p style='color:#3a5a80;font-size:0.82rem;margin:4px 0;'>• Dental clinics Stockholm Sweden</p>
+    <p style='color:#3a5a80;font-size:0.82rem;margin:4px 0;'>• Plumbing services London UK</p>
+    <p style='color:#3a5a80;font-size:0.82rem;margin:4px 0;'>• Real estate agencies Miami Florida</p>
+    <p style='color:#3a5a80;font-size:0.82rem;margin:4px 0;'>• Auto repair shops Berlin Germany</p>
+  </div>
 </div>""", unsafe_allow_html=True)
-

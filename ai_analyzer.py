@@ -10,47 +10,90 @@ JUNK_EMAIL_PATTERNS = [
     'compliance', 'security@', 'abuse@', 'admin@',
 ]
 
+# JSON schema for structured Gemini output
+COMPANY_ANALYSIS_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "automation_score": {"type": "INTEGER"},
+        "score_reason": {"type": "STRING"},
+        "pain_points": {"type": "STRING"},
+        "automation_opportunities": {"type": "STRING"},
+        "tech_stack": {"type": "STRING"},
+        "business_maturity": {"type": "STRING", "enum": ["startup", "growing", "established"]},
+        "outreach_subject": {"type": "STRING"},
+        "outreach_email_draft": {"type": "STRING"},
+        "outreach_angle": {"type": "STRING"},
+    },
+    "required": [
+        "automation_score", "score_reason", "pain_points",
+        "automation_opportunities", "tech_stack", "business_maturity",
+        "outreach_subject", "outreach_email_draft", "outreach_angle",
+    ]
+}
+
+BATCH_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {},
+}
+
+
+def build_batch_schema(company_names):
+    """Build a dynamic JSON schema with company names as keys."""
+    schema = {
+        "type": "OBJECT",
+        "properties": {},
+    }
+    for name in company_names:
+        schema["properties"][name] = COMPANY_ANALYSIS_SCHEMA
+    return schema
+
+
 def analyze_batch(api_key, batch_data):
     """Deep business intelligence extraction with automation scoring."""
 
     prompt = """You are an expert lead generation and high-ticket automation consultant.
-Analyze each company's website data (which includes content from homepage, about, and services pages) and extract deep business intelligence.
+Analyze each company's website data and extract deep business intelligence.
 
 """
+    company_names = []
     for item in batch_data:
-        prompt += f"=== COMPANY: {item['Company Name']} ===\n"
-        prompt += f"Website Data: {str(item['Website Text'])[:7000]}\n\n"
+        name = item['Company Name']
+        company_names.append(name)
+        # Reduced from 7000 to 3000 chars — clean text is more information-dense
+        text = str(item['Website Text'])[:3000]
+        prompt += f"=== COMPANY: {name} ===\n"
+        prompt += f"Website Data: {text}\n\n"
 
     prompt += """
-For EACH company above, extract the following and return as JSON:
-
-{
-  "Company Name": {
-    "automation_score": <integer 1-10, how urgently this business needs automation>,
-    "score_reason": "<one sentence why you gave this score>",
-    "pain_points": "<specific operational problems detected from website analysis>",
-    "automation_opportunities": "<concrete AI/automation solutions you could sell them>",
-    "tech_stack": "<likely tech they use e.g. WordPress, Wix, HubSpot, or 'Legacy System'>",
-    "business_maturity": "<one of: startup/growing/established>",
-    "outreach_subject": "<compelling 3-5 word email subject line>",
-    "outreach_email_draft": "<a short, punchy 3-sentence cold email that references a specific detail found in their text>",
-    "outreach_angle": "<one powerful opening line for cold outreach>"
-  }
-}
+For EACH company above, extract:
+- automation_score: integer 1-10 (how urgently this business needs automation)
+- score_reason: one sentence why
+- pain_points: specific operational problems detected
+- automation_opportunities: concrete AI/automation solutions to sell them
+- tech_stack: likely tech (WordPress, Wix, HubSpot, or 'Legacy System')
+- business_maturity: one of startup/growing/established
+- outreach_subject: compelling 3-5 word email subject line
+- outreach_email_draft: short punchy 3-sentence cold email referencing a specific detail
+- outreach_angle: one powerful opening line for cold outreach
 
 Scoring guide:
 - 8-10: Manual booking, no chatbot, outdated design, large service menu (High potential)
 - 5-7: Modern site but lacks advanced AI tools or CRM integration
 - 1-4: Already well-automated or small boutique not worth automating
 
-Return ONLY valid JSON. Keys must be exact company names.
+Return a JSON object where each key is the exact company name.
 """
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
     headers = {'Content-Type': 'application/json'}
+
+    # Use structured output with response_mime_type for reliable JSON
     data = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.2}
+        "generationConfig": {
+            "temperature": 0.2,
+            "responseMimeType": "application/json",
+        }
     }
 
     base_delay = 10
@@ -74,7 +117,8 @@ Return ONLY valid JSON. Keys must be exact company names.
 
             raw = result['candidates'][0]['content']['parts'][0]['text'].strip()
 
-            # Strip markdown fences
+            # With responseMimeType, should already be clean JSON
+            # But strip markdown fences just in case
             if raw.startswith("```"):
                 lines = raw.split('\n')
                 raw = '\n'.join(lines[1:-1]) if lines[-1] == '```' else '\n'.join(lines[1:])
@@ -84,7 +128,11 @@ Return ONLY valid JSON. Keys must be exact company names.
 
         except json.JSONDecodeError as e:
             print(f"    JSON parse error on attempt {attempt+1}: {e}")
-            return {}
+            if attempt < 3:
+                time.sleep(base_delay)
+                base_delay *= 2
+            else:
+                return {}
         except Exception as e:
             print(f"    Attempt {attempt+1} failed: {e}")
             if attempt < 3:
@@ -108,14 +156,32 @@ def main():
         return
 
     df = pd.read_csv(input_file)
+
+    # Check for cached results — skip already-analyzed companies
+    already_analyzed = set()
+    if os.path.exists(output_file):
+        existing = pd.read_csv(output_file)
+        already_analyzed = set(existing['Company Name'].astype(str))
+        print(f"Found {len(already_analyzed)} already-analyzed leads in cache.")
+
     # Only process leads that were successfully scraped
-    df_valid = df[df['Status'] == 'Success'].copy()
-    df_failed = df[df['Status'] != 'Success'].copy()
+    df_valid = df[df['Status'].astype(str).str.contains('Success', na=False)].copy()
+    df_failed = df[~df['Status'].astype(str).str.contains('Success', na=False)].copy()
+
+    # Filter out already-analyzed leads
+    if already_analyzed:
+        df_valid = df_valid[~df_valid['Company Name'].astype(str).isin(already_analyzed)]
+        df_failed = df_failed[~df_failed['Company Name'].astype(str).isin(already_analyzed)]
 
     total = len(df_valid)
+    if total == 0:
+        print("All leads already analyzed. Nothing to do.")
+        return
+
     print(f"Starting AI Deep Analysis for {total} valid leads ({len(df_failed)} skipped — no website data)...")
 
-    batch_size = 5  # Smaller batches = better JSON accuracy
+    # Increased batch size from 5 to 8 — clean text allows larger batches
+    batch_size = 8
     batches = [df_valid.iloc[i:i+batch_size] for i in range(0, len(df_valid), batch_size)]
 
     final_results = []
@@ -164,11 +230,11 @@ def main():
             new_row['tech_stack']       = data.get('tech_stack', 'N/A')
 
             score = new_row['Automation Score']
-            print(f"  ✓ {name[:45]} → Score: {score}/10")
+            print(f"  > {name[:45]} -> Score: {score}/10")
             final_results.append(new_row)
 
-        print(f"  Batch {i+1} done. Waiting 4s...")
-        time.sleep(4)
+        print(f"  Batch {i+1} done. Waiting 3s...")
+        time.sleep(3)
 
     # Add failed rows (no website data) without AI fields
     for _, row in df_failed.iterrows():
@@ -179,6 +245,11 @@ def main():
 
     result_df = pd.DataFrame(final_results)
 
+    # Merge with cached results if they exist
+    if os.path.exists(output_file) and len(already_analyzed) > 0:
+        existing = pd.read_csv(output_file)
+        result_df = pd.concat([existing, result_df], ignore_index=True)
+
     # Sort by automation score descending (best leads first)
     def safe_score(x):
         try: return int(x)
@@ -187,8 +258,9 @@ def main():
     result_df = result_df.sort_values('_score_sort', ascending=False).drop(columns=['_score_sort'])
 
     result_df.to_csv(output_file, index=False)
-    print(f"\nDone! {len(final_results)} leads saved to {output_file}")
-    print(f"Top lead: {result_df.iloc[0]['Company Name']} — Score: {result_df.iloc[0]['Automation Score']}/10")
+    print(f"\nDone! {len(result_df)} leads saved to {output_file}")
+    if len(result_df) > 0:
+        print(f"Top lead: {result_df.iloc[0]['Company Name']} — Score: {result_df.iloc[0]['Automation Score']}/10")
 
 
 if __name__ == "__main__":
