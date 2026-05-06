@@ -1,0 +1,3 @@
+@echo off
+echo Starting AI Lead Scraper Dashboard...
+python -m streamlit run app.py
