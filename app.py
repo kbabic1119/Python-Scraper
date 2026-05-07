@@ -317,11 +317,22 @@ with st.sidebar:
         st.write("")
 
     st.markdown("---")
+    st.markdown("<p style='font-family:JetBrains Mono,monospace;color:#bf7fff;font-size:0.8rem;letter-spacing:2px;'>// ARCHIVED</p>", unsafe_allow_html=True)
+    from lead_manager import get_archived_count, restore_all_archived
+    archived_n = get_archived_count()
+    st.caption(f"📦 **{archived_n}** archived leads")
+    if archived_n > 0:
+        if st.button("♻️ Restore All Archived", use_container_width=True):
+            restored = restore_all_archived()
+            st.success(f"Restored {restored} leads back to leads.csv")
+            st.rerun()
+
+    st.markdown("---")
     st.markdown("<p style='font-family:JetBrains Mono,monospace;color:#ff4466;font-size:0.8rem;letter-spacing:2px;'>// RESET</p>", unsafe_allow_html=True)
     total_leads = len(safe_read_csv("leads.csv"))
     st.caption(f"Currently holding **{total_leads}** accumulated leads.")
     if st.button("🗑️ Clear ALL Data", use_container_width=True):
-        for f in ["leads.csv","pain_scored_leads.csv","enriched_leads.csv","deep_extracted_leads.csv"]:
+        for f in ["leads.csv","pain_scored_leads.csv","enriched_leads.csv","deep_extracted_leads.csv","archived_leads.csv"]:
             if os.path.exists(f): os.remove(f)
         st.success("All data cleared.")
         st.rerun()
@@ -343,12 +354,46 @@ if "search_source" not in st.session_state:
 if "page" not in st.session_state:
     st.session_state["page"] = 0
 
+# ─── SEARCH TEMPLATES ─────────────────────────────────────────────────────────
+SEARCH_TEMPLATES = {
+    "Custom (free text)": {"query": "", "pain_reason": "Custom search"},
+    "No Online Booking": {"query": "{industry} in {city} no online booking manual scheduling", "pain_reason": "No online booking system — manual scheduling only"},
+    "No AI Chatbot": {"query": "{industry} in {city} overwhelmed messages no chatbot", "pain_reason": "No chatbot — drowning in customer messages"},
+    "Hard to Contact": {"query": "{industry} in {city} complaints hard to reach poor response time", "pain_reason": "Poor response time — customers can't reach them"},
+    "Outdated Website": {"query": "{industry} in {city} outdated website not mobile friendly", "pain_reason": "Outdated website — not mobile responsive"},
+    "No Social Media": {"query": "{industry} in {city} no facebook no instagram no online presence", "pain_reason": "No social media presence"},
+    "No Automation": {"query": "{industry} in {city} paper forms no digital booking no automation", "pain_reason": "Manual processes — no digital automation"},
+    "Bad Reviews": {"query": "{industry} in {city} bad reviews slow service long wait times", "pain_reason": "Bad reviews — slow service and long waits"},
+    "No Google Presence": {"query": "{industry} in {city} not on google maps no google business", "pain_reason": "Not on Google Maps — invisible to local searches"},
+}
+
 # ─── PIPELINE CONTROL ────────────────────────────────────────────────────────
 with st.container(border=True):
     st.markdown("<p style='font-family:JetBrains Mono,monospace;color:#4a6080;font-size:0.75rem;letter-spacing:2px;'>// PIPELINE CONTROL</p>", unsafe_allow_html=True)
 
-    # Query input
-    search_query = st.text_input("Search Query", placeholder="e.g., HVAC companies Oslo Norway", label_visibility="collapsed")
+    # Search template selector
+    st.markdown("<p style='font-family:JetBrains Mono,monospace;color:#ffb800;font-size:0.68rem;letter-spacing:1.5px;margin-bottom:4px;'>🎯 SEARCH TEMPLATE</p>", unsafe_allow_html=True)
+    template_choice = st.selectbox("Template", list(SEARCH_TEMPLATES.keys()), index=0, label_visibility="collapsed")
+
+    # If template selected, show industry + city inputs
+    if template_choice != "Custom (free text)":
+        t_col1, t_col2 = st.columns(2)
+        with t_col1:
+            template_industry = st.text_input("Industry", placeholder="e.g., HVAC, Dentist, Plumber", key="tmpl_industry")
+        with t_col2:
+            template_city = st.text_input("City / Region", placeholder="e.g., Oslo Norway, London UK", key="tmpl_city")
+
+        # Build query from template
+        tmpl = SEARCH_TEMPLATES[template_choice]
+        if template_industry and template_city:
+            search_query = tmpl["query"].format(industry=template_industry, city=template_city)
+        else:
+            search_query = ""
+        search_pain_reason = tmpl["pain_reason"]
+    else:
+        # Custom free text
+        search_query = st.text_input("Search Query", placeholder="e.g., HVAC companies Oslo Norway", label_visibility="collapsed")
+        search_pain_reason = "Custom search"
 
     # Source toggle buttons
     st.markdown("<p style='font-family:JetBrains Mono,monospace;color:#4a6080;font-size:0.68rem;letter-spacing:1.5px;margin-bottom:6px;'>SELECT SOURCE</p>", unsafe_allow_html=True)
@@ -377,12 +422,11 @@ with st.container(border=True):
     )
 
     st.markdown("---")
-    c1, c2, c3, c4, c5 = st.columns(5)
+    c1, c2, c3, c4 = st.columns(4)
     with c1: run_finder    = st.button("🔍 1. Find Leads",   use_container_width=True, help="Search for companies → leads.csv")
     with c2: run_prescorer = st.button("⚡ 2. Pre-Score",    use_container_width=True, help="Pain detection (free) → pain_scored_leads.csv")
-    with c3: run_diver     = st.button("🌐 3. Scrape Sites", use_container_width=True, help="Visit websites → enriched_leads.csv")
-    with c4: run_analyzer  = st.button("🧠 4. AI Analyze",   use_container_width=True, help="Gemini deep extraction → deep_extracted_leads.csv")
-    with c5: run_full      = st.button("🚀 FULL PIPELINE",   use_container_width=True, type="primary")
+    with c3: run_diver     = st.button("🌐 3. Scrape Sites", use_container_width=True, help="Visit websites → enriched_leads.csv (uses pain filter)")
+    with c4: run_analyzer  = st.button("🧠 4. AI Analyze",   use_container_width=True, help="Gemini deep extraction → deep_extracted_leads.csv (uses pain filter)")
 
 # ─── ENV + HELPERS ───────────────────────────────────────────────────────────
 env = os.environ.copy()
@@ -445,37 +489,13 @@ def clear_old_data():
         if os.path.exists(f): os.remove(f)
 
 # ─── BUTTON ACTIONS ──────────────────────────────────────────────────────────
-if run_full:
-    if not search_query: st.error("Enter a search query first.")
-    else:
-        clear_old_data()
-        st.session_state["last_error"] = None
-        with st.status("🚀 Full Pipeline Running...", expanded=True) as status:
-            progress_bar = st.progress(0)
-            st.markdown("<p style='font-family:JetBrains Mono,monospace;color:#4a6080;font-size:0.72rem;'>Step 1/4: Finding leads...</p>", unsafe_allow_html=True)
-            ok1 = run_and_stream([sys.executable,"lead_finder.py","--query",search_query,"--source",search_source,"--limit",str(lead_limit)], "STEP 1 — FINDING LEADS", progress_bar, 1, 4)
-            if ok1:
-                st.markdown("<p style='font-family:JetBrains Mono,monospace;color:#4a6080;font-size:0.72rem;'>Step 2/4: Pre-scoring leads...</p>", unsafe_allow_html=True)
-                ok2 = run_and_stream([sys.executable,"pre_scorer.py"], "STEP 2 — PRE-SCORING LEADS", progress_bar, 2, 4)
-                if ok2:
-                    st.markdown("<p style='font-family:JetBrains Mono,monospace;color:#4a6080;font-size:0.72rem;'>Step 3/4: Scraping websites...</p>", unsafe_allow_html=True)
-                    ok3 = run_and_stream([sys.executable,"deep_diver.py"], "STEP 3 — SCRAPING WEBSITES", progress_bar, 3, 4)
-                    if ok3:
-                        st.markdown("<p style='font-family:JetBrains Mono,monospace;color:#4a6080;font-size:0.72rem;'>Step 4/4: AI analysis...</p>", unsafe_allow_html=True)
-                        ok4 = run_and_stream([sys.executable,"ai_analyzer.py"], "STEP 4 — AI DEEP ANALYSIS", progress_bar, 4, 4)
-                        if ok4:
-                            progress_bar.progress(1.0)
-                            status.update(label="Pipeline Complete", state="complete")
-                            st.toast("Intelligence ready!", icon="🎉")
-        st.rerun()
-
-elif run_finder:
+if run_finder:
     if not search_query: st.error("Enter a search query first.")
     else:
         st.session_state["last_error"] = None
         with st.status("Finding Leads...", expanded=True):
             progress_bar = st.progress(0)
-            run_and_stream([sys.executable,"lead_finder.py","--query",search_query,"--source",search_source,"--limit",str(lead_limit)], "FINDING LEADS", progress_bar, 1, 1)
+            run_and_stream([sys.executable,"lead_finder.py","--query",search_query,"--source",search_source,"--limit",str(lead_limit),"--pain-reason",search_pain_reason], "FINDING LEADS", progress_bar, 1, 1)
             progress_bar.progress(1.0)
         st.rerun()
 
@@ -493,9 +513,13 @@ elif run_diver:
     if not os.path.exists("leads.csv"): st.error("Run Find Leads first.")
     else:
         st.session_state["last_error"] = None
+        # Filter gate: use pain_scored_leads if available, apply threshold
+        input_arg = []
+        if os.path.exists("pain_scored_leads.csv"):
+            input_arg = ["--input", "pain_scored_leads.csv"]
         with st.status("Scraping Websites...", expanded=True):
             progress_bar = st.progress(0)
-            run_and_stream([sys.executable,"deep_diver.py"], "SCRAPING WEBSITES", progress_bar, 1, 1)
+            run_and_stream([sys.executable,"deep_diver.py"] + input_arg, "SCRAPING WEBSITES (filtered by pain score)", progress_bar, 1, 1)
             progress_bar.progress(1.0)
         st.rerun()
 
@@ -527,10 +551,9 @@ with m4:
     n = get_count("deep_extracted_leads.csv")
     st.markdown(f"<div class='metric-box'><div class='num'>{n}</div><div class='lbl'>🧠 AI Analyzed</div></div>", unsafe_allow_html=True)
 with m5:
-    total    = get_count("leads.csv")
-    analyzed = get_count("deep_extracted_leads.csv")
-    pct = int((analyzed/total)*100) if total > 0 else 0
-    st.markdown(f"<div class='metric-box'><div class='num'>{pct}%</div><div class='lbl'>🎯 Pipeline Done</div></div>", unsafe_allow_html=True)
+    from lead_manager import get_archived_count as _arc_count
+    arc = _arc_count()
+    st.markdown(f"<div class='metric-box'><div class='num'>{arc}</div><div class='lbl'>📦 Archived</div></div>", unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -733,6 +756,48 @@ if df is not None and len(df) > 0:
     # Slice to current page
     page_df = df.iloc[start_idx:end_idx]
 
+    # ── LEAD MANAGEMENT TOOLBAR ────────────────────────────────────────
+    from lead_manager import delete_leads, archive_leads
+
+    if "selected_leads" not in st.session_state:
+        st.session_state["selected_leads"] = set()
+
+    # Select all / deselect all
+    mgmt_col1, mgmt_col2, mgmt_col3, mgmt_col4 = st.columns([1.5, 1, 1, 1])
+    with mgmt_col1:
+        select_all = st.checkbox("Select All on Page", key="select_all_page")
+    with mgmt_col2:
+        if st.button("🗑️ Delete", use_container_width=True, disabled=len(st.session_state["selected_leads"]) == 0):
+            active_csv = fname_map[data_label]
+            deleted = delete_leads(active_csv, list(st.session_state["selected_leads"]))
+            st.session_state["selected_leads"] = set()
+            st.toast(f"Deleted {deleted} leads")
+            st.rerun()
+    with mgmt_col3:
+        if st.button("📦 Archive", use_container_width=True, disabled=len(st.session_state["selected_leads"]) == 0):
+            active_csv = fname_map[data_label]
+            archived = archive_leads(active_csv, list(st.session_state["selected_leads"]))
+            st.session_state["selected_leads"] = set()
+            st.toast(f"Archived {archived} leads")
+            st.rerun()
+    with mgmt_col4:
+        if st.button("🔍 Deep Scrape", use_container_width=True, disabled=len(st.session_state["selected_leads"]) == 0):
+            # Write selected leads to a temp CSV, then run deep_diver on just those
+            active_csv = fname_map[data_label]
+            sel_df = pd.read_csv(active_csv)
+            sel_indices = list(st.session_state["selected_leads"])
+            sel_subset = sel_df.loc[[i for i in sel_indices if i in sel_df.index]]
+            sel_subset.to_csv("_selected_leads.csv", index=False)
+            st.session_state["selected_leads"] = set()
+            st.session_state["last_error"] = None
+            with st.status("🔍 Deep Scraping Selected...", expanded=True):
+                progress_bar_sel = st.progress(0)
+                run_and_stream([sys.executable, "deep_diver.py", "--input", "_selected_leads.csv"], "DEEP SCRAPING SELECTED LEADS", progress_bar_sel, 1, 1)
+                progress_bar_sel.progress(1.0)
+            if os.path.exists("_selected_leads.csv"):
+                os.remove("_selected_leads.csv")
+            st.rerun()
+
     # ── CARD GRID ─────────────────────────────────────────────────────
     def score_class(score):
         try:
@@ -748,8 +813,16 @@ if df is not None and len(df) > 0:
 
     for chunk in chunks:
         cols = st.columns(cols_per_row)
-        for col, (_, lead) in zip(cols, chunk.iterrows()):
+        for col, (row_idx, lead) in zip(cols, chunk.iterrows()):
             with col:
+                # ── Selection checkbox ────────────────────────────────────
+                actual_idx = start_idx + list(page_df.index).index(row_idx) if row_idx in page_df.index else row_idx
+                is_checked = select_all or (actual_idx in st.session_state["selected_leads"])
+                if st.checkbox("Select", value=is_checked, key=f"sel_{row_idx}_{current_page}", label_visibility="collapsed"):
+                    st.session_state["selected_leads"].add(row_idx)
+                else:
+                    st.session_state["selected_leads"].discard(row_idx)
+
                 # ── Data extraction ──────────────────────────────────────
                 name     = str(lead.get("Company Name", "Unknown"))
                 url      = str(lead.get("Website URL", ""))
@@ -853,7 +926,12 @@ if df is not None and len(df) > 0:
                     has_mob = str(lead.get("Has Mobile", ""))
                     has_an = str(lead.get("Has Analytics", ""))
                     resp_time = str(lead.get("Response Time (ms)", ""))
+                    search_reason = str(lead.get("Search Reason", ""))
+                    domain_age = str(lead.get("Domain Age (yrs)", ""))
+                    email_prov = str(lead.get("Email Provider", ""))
                     with st.expander(f"⚡ Pain Analysis — {name[:30]}", expanded=False):
+                        if is_valid(search_reason):
+                            st.markdown(f"**🎯 Why selected:** {search_reason}")
                         if is_valid(pain_details):
                             for pp in pain_details.split(" | "):
                                 if pp.strip():
@@ -863,10 +941,14 @@ if df is not None and len(df) > 0:
                             st.markdown(f"**CMS:** {cms}")
                             st.markdown(f"**Chatbot:** {has_chat}")
                             st.markdown(f"**Booking:** {has_book}")
+                            if is_valid(domain_age):
+                                st.markdown(f"**Domain Age:** {domain_age} yrs")
                         with col_b:
                             st.markdown(f"**Mobile:** {has_mob}")
                             st.markdown(f"**Analytics:** {has_an}")
                             st.markdown(f"**Response:** {resp_time}ms")
+                            if is_valid(email_prov):
+                                st.markdown(f"**Email:** {email_prov}")
                 elif data_label in ("enriched", "raw") and intel_html:
                     with st.expander(f"Details — {name[:30]}", expanded=False):
                         st.markdown(f"<div class='intel-section'>{intel_html}</div>", unsafe_allow_html=True)

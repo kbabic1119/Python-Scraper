@@ -228,6 +228,7 @@ def main():
                         default="gemini", help="Search source to use")
     parser.add_argument("--output", type=str, default="leads.csv", help="Output CSV file name")
     parser.add_argument("--limit", type=int, default=20, help="Max leads to find")
+    parser.add_argument("--pain-reason", type=str, default="", help="Why this lead was searched (from template)")
 
     args = parser.parse_args()
 
@@ -246,6 +247,11 @@ def main():
 
     if leads:
         new_df = pd.DataFrame(leads)
+        # Add search context
+        pain_reason = getattr(args, 'pain_reason', '') or ''
+        if pain_reason:
+            new_df["Search Reason"] = pain_reason
+        new_df["Search Query"] = args.query
         # Normalize URLs for consistent dedup
         new_df['Website URL'] = new_df['Website URL'].apply(normalize_url)
 

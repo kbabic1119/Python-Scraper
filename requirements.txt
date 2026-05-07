@@ -7,3 +7,6 @@ google-search-results
 streamlit
 python-dotenv
 playwright
+httpx
+python-whois
+dnspython

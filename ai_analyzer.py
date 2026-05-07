@@ -143,7 +143,12 @@ Return a JSON object where each key is the exact company name.
 
 
 def main():
-    input_file  = "enriched_leads.csv"
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input", default="enriched_leads.csv", help="Input CSV file")
+    args = parser.parse_args()
+
+    input_file  = args.input
     output_file = "deep_extracted_leads.csv"
 
     api_key = os.environ.get("GEMINI_API_KEY")

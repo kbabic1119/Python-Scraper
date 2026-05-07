@@ -1,7 +1,11 @@
 """
-Pre-Score Engine — Phase 2
-Pure Python pain detection. Scores leads 1-10 based on 13 website checks.
-No API keys needed. No Playwright. No Gemini. Just requests + BeautifulSoup.
+Pre-Score Engine — Phase 2 (Enhanced)
+Pure Python pain detection. Scores leads 1-10 based on 16 website checks.
+No API keys needed. No Playwright. No Gemini. Free tools only.
+
+Checks: HTTP headers, SSL, CMS, robots.txt, response time, mobile viewport,
+Schema.org, Open Graph, chat widgets, booking, analytics, contact forms,
+social links, domain age (whois), email provider (DNS MX), site staleness (Wayback).
 
 Usage:
     python pre_scorer.py
@@ -9,7 +13,6 @@ Usage:
 """
 
 import pandas as pd
-import requests
 import time
 import re
 import ssl
@@ -19,6 +22,29 @@ from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import sys
 import os
+from datetime import datetime
+
+# Use httpx for async-capable HTTP (faster than requests)
+try:
+    import httpx
+    HTTPX_AVAILABLE = True
+except ImportError:
+    HTTPX_AVAILABLE = False
+    import requests
+
+# python-whois for domain age
+try:
+    import whois
+    WHOIS_AVAILABLE = True
+except ImportError:
+    WHOIS_AVAILABLE = False
+
+# dnspython for MX record lookup
+try:
+    import dns.resolver
+    DNS_AVAILABLE = True
+except ImportError:
+    DNS_AVAILABLE = False
 
 # Timeout for all HTTP requests (seconds)
 REQUEST_TIMEOUT = 8
@@ -36,13 +62,36 @@ def normalize_url(url):
     return url
 
 
+def _get(url, **kwargs):
+    """HTTP GET using httpx if available, else requests."""
+    kwargs.setdefault("timeout", REQUEST_TIMEOUT)
+    kwargs.setdefault("follow_redirects", True)
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    if HTTPX_AVAILABLE:
+        return httpx.get(url, headers=headers, **kwargs)
+    else:
+        kwargs.pop("follow_redirects", None)
+        return requests.get(url, headers=headers, allow_redirects=True, **kwargs)
+
+
+def _head(url, **kwargs):
+    """HTTP HEAD using httpx if available, else requests."""
+    kwargs.setdefault("timeout", REQUEST_TIMEOUT)
+    kwargs.setdefault("follow_redirects", True)
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; LeadScorer/1.0)"}
+    if HTTPX_AVAILABLE:
+        return httpx.head(url, headers=headers, **kwargs)
+    else:
+        kwargs.pop("follow_redirects", None)
+        return requests.head(url, headers=headers, allow_redirects=True, **kwargs)
+
+
 def check_headers(url):
     """Check HTTP headers for server tech, security headers."""
     result = {"server": "", "has_security_headers": False, "response_time_ms": 0}
     try:
         start = time.time()
-        resp = requests.head(url, timeout=REQUEST_TIMEOUT, allow_redirects=True,
-                             headers={"User-Agent": "Mozilla/5.0 (compatible; LeadScorer/1.0)"})
+        resp = _head(url)
         result["response_time_ms"] = int((time.time() - start) * 1000)
         result["server"] = resp.headers.get("Server", "").lower()
         # Security headers check
@@ -74,8 +123,7 @@ def check_ssl(url):
 def fetch_page(url):
     """Fetch full page HTML for analysis."""
     try:
-        resp = requests.get(url, timeout=REQUEST_TIMEOUT, allow_redirects=True,
-                           headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
+        resp = _get(url)
         if resp.status_code == 200:
             return resp.text
     except Exception:
@@ -88,8 +136,7 @@ def check_robots_txt(url):
     try:
         parsed = urlparse(url)
         robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
-        resp = requests.get(robots_url, timeout=5,
-                           headers={"User-Agent": "Mozilla/5.0 (compatible; LeadScorer/1.0)"})
+        resp = _get(robots_url, timeout=5)
         if resp.status_code == 200 and "user-agent" in resp.text.lower():
             lines = [l for l in resp.text.splitlines() if l.strip() and not l.startswith("#")]
             return len(lines)  # More lines = more organized
@@ -219,6 +266,75 @@ def detect_cms(soup, html, server_header):
     return "custom/unknown"
 
 
+# ─── FREE TOOLS: WHOIS, DNS MX, WAYBACK ─────────────────────────────────────
+
+def check_domain_age(url):
+    """Check domain age using python-whois. Returns years since registration."""
+    if not WHOIS_AVAILABLE:
+        return None
+    try:
+        parsed = urlparse(url)
+        domain = parsed.hostname
+        if not domain:
+            return None
+        w = whois.whois(domain)
+        creation = w.creation_date
+        if isinstance(creation, list):
+            creation = creation[0]
+        if creation:
+            age_years = (datetime.now() - creation).days / 365.25
+            return round(age_years, 1)
+    except Exception:
+        pass
+    return None
+
+
+def check_mx_records(url):
+    """Check MX records to determine email provider. Free email = small business signal."""
+    if not DNS_AVAILABLE:
+        return {"provider": "unknown", "is_free_email": False}
+    try:
+        parsed = urlparse(url)
+        domain = parsed.hostname
+        if not domain:
+            return {"provider": "unknown", "is_free_email": False}
+        # Remove www. prefix
+        if domain.startswith("www."):
+            domain = domain[4:]
+        answers = dns.resolver.resolve(domain, 'MX')
+        mx_hosts = [str(r.exchange).lower() for r in answers]
+        mx_str = " ".join(mx_hosts)
+
+        # Detect free/generic email providers
+        free_providers = ["google", "gmail", "outlook", "hotmail", "yahoo", "zoho"]
+        for provider in free_providers:
+            if provider in mx_str:
+                return {"provider": provider, "is_free_email": True}
+        # Custom email = more professional
+        return {"provider": "custom", "is_free_email": False}
+    except Exception:
+        return {"provider": "unknown", "is_free_email": False}
+
+
+def check_wayback_staleness(url):
+    """Check Wayback Machine for last snapshot date. Stale site = opportunity."""
+    try:
+        api_url = f"https://archive.org/wayback/available?url={url}"
+        resp = _get(api_url, timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            snapshot = data.get("archived_snapshots", {}).get("closest", {})
+            if snapshot:
+                ts = snapshot.get("timestamp", "")
+                if ts and len(ts) >= 8:
+                    snap_date = datetime.strptime(ts[:8], "%Y%m%d")
+                    days_since = (datetime.now() - snap_date).days
+                    return days_since
+    except Exception:
+        pass
+    return None
+
+
 # ─── SCORING ALGORITHM ───────────────────────────────────────────────────────
 
 def calculate_pain_score(checks):
@@ -312,8 +428,25 @@ def calculate_pain_score(checks):
         score += 0.5
         pain_points.append("No/minimal robots.txt")
 
-    # Normalize to 1-10 scale (max raw score is ~14)
-    normalized = max(1, min(10, round(score * 10 / 14)))
+    # Free email provider (weight: 0.5)
+    if checks.get("is_free_email"):
+        score += 0.5
+        pain_points.append(f"Uses free email ({checks.get('email_provider', 'gmail')})")
+
+    # Domain age + basic site = stale business (weight: 0.5)
+    domain_age = checks.get("domain_age_years")
+    if domain_age and domain_age > 5 and not checks.get("has_schema") and not checks.get("has_chat_widget"):
+        score += 0.5
+        pain_points.append(f"Domain {domain_age:.0f}yrs old but no modern features")
+
+    # Wayback staleness — site unchanged 1+ year (weight: 0.5)
+    wayback_days = checks.get("wayback_days_since_change")
+    if wayback_days and wayback_days > 365:
+        score += 0.5
+        pain_points.append(f"Site unchanged for {wayback_days // 30} months (Wayback)")
+
+    # Normalize to 1-10 scale (max raw score is ~16)
+    normalized = max(1, min(10, round(score * 10 / 16)))
 
     return normalized, pain_points
 
@@ -384,6 +517,17 @@ def score_lead(url):
     checks["found_socials"] = list(found_socials)
     checks["missing_socials"] = list(all_socials - found_socials)
 
+    # 14. Domain Age (whois)
+    checks["domain_age_years"] = check_domain_age(url)
+
+    # 15. Email Provider (DNS MX)
+    mx_info = check_mx_records(url)
+    checks["email_provider"] = mx_info["provider"]
+    checks["is_free_email"] = mx_info["is_free_email"]
+
+    # 16. Wayback Machine Staleness
+    checks["wayback_days_since_change"] = check_wayback_staleness(url)
+
     # Calculate final score
     pain_score, pain_points = calculate_pain_score(checks)
 
@@ -445,6 +589,9 @@ def process_leads(input_csv="leads.csv", output_csv="pain_scored_leads.csv"):
     df["Has Schema"] = ["Yes" if r["checks"].get("has_schema") else "No" for r in results]
     df["CMS Detected"] = [r["checks"].get("cms", "unknown") for r in results]
     df["Response Time (ms)"] = [r["checks"].get("response_time_ms", 0) for r in results]
+    df["Domain Age (yrs)"] = [r["checks"].get("domain_age_years", "") for r in results]
+    df["Email Provider"] = [r["checks"].get("email_provider", "") for r in results]
+    df["Wayback Stale (days)"] = [r["checks"].get("wayback_days_since_change", "") for r in results]
 
     # Sort by pain score descending (best leads first)
     df = df.sort_values("Pain Score", ascending=False).reset_index(drop=True)
