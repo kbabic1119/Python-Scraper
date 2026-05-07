@@ -424,25 +424,8 @@ if st.session_state["last_error"]:
             st.session_state["last_error"] = None
             st.rerun()
 
-# ─── METRICS ROW ─────────────────────────────────────────────────────────────
-st.markdown("<br>", unsafe_allow_html=True)
-m1, m2, m3, m4, m5 = st.columns(5)
-with m1:
-    n = get_count("leads.csv")
-    st.markdown(f"<div class='metric-box'><div class='num'>{n}</div><div class='lbl'>🔍 Found</div></div>", unsafe_allow_html=True)
-with m2:
-    n = get_count("pain_scored_leads.csv")
-    st.markdown(f"<div class='metric-box'><div class='num'>{n}</div><div class='lbl'>⚡ Scored</div></div>", unsafe_allow_html=True)
-with m3:
-    n = get_count("enriched_leads.csv")
-    st.markdown(f"<div class='metric-box'><div class='num'>{n}</div><div class='lbl'>🌐 Scraped</div></div>", unsafe_allow_html=True)
-with m4:
-    n = get_count("deep_extracted_leads.csv")
-    st.markdown(f"<div class='metric-box'><div class='num'>{n}</div><div class='lbl'>🧠 Analyzed</div></div>", unsafe_allow_html=True)
-with m5:
-    from lead_manager import get_archived_count as _arc_count, delete_leads, archive_leads
-    arc = _arc_count()
-    st.markdown(f"<div class='metric-box'><div class='num'>{arc}</div><div class='lbl'>📦 Archived</div></div>", unsafe_allow_html=True)
+# Import lead_manager functions early
+from lead_manager import get_archived_count as _arc_count, delete_leads, archive_leads
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # ─── 3-TAB LAYOUT ─────────────────────────────────────────────────────────────
@@ -1013,3 +996,22 @@ with tab_results:
   <p style='font-family:JetBrains Mono,monospace;color:#00d4ff;font-size:1rem;letter-spacing:3px;'>NO DATA YET</p>
   <p style='color:#2a4060;font-size:0.85rem;'>Go to the <strong style='color:#4a80c0'>Discovery</strong> tab to find leads, then <strong style='color:#4a80c0'>Processing</strong> to score them.</p>
 </div>""", unsafe_allow_html=True)
+
+# ─── METRICS ROW (below tabs for better mobile experience) ───────────────────
+st.markdown("<br>", unsafe_allow_html=True)
+m1, m2, m3, m4, m5 = st.columns(5)
+with m1:
+    n = get_count("leads.csv")
+    st.markdown(f"<div class='metric-box'><div class='num'>{n}</div><div class='lbl'>🔍 Found</div></div>", unsafe_allow_html=True)
+with m2:
+    n = get_count("pain_scored_leads.csv")
+    st.markdown(f"<div class='metric-box'><div class='num'>{n}</div><div class='lbl'>⚡ Scored</div></div>", unsafe_allow_html=True)
+with m3:
+    n = get_count("enriched_leads.csv")
+    st.markdown(f"<div class='metric-box'><div class='num'>{n}</div><div class='lbl'>🌐 Scraped</div></div>", unsafe_allow_html=True)
+with m4:
+    n = get_count("deep_extracted_leads.csv")
+    st.markdown(f"<div class='metric-box'><div class='num'>{n}</div><div class='lbl'>🧠 Analyzed</div></div>", unsafe_allow_html=True)
+with m5:
+    arc = _arc_count()
+    st.markdown(f"<div class='metric-box'><div class='num'>{arc}</div><div class='lbl'>📦 Archived</div></div>", unsafe_allow_html=True)
