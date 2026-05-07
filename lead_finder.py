@@ -23,10 +23,13 @@ def normalize_url(url):
 
 def search_duckduckgo(query, max_results=10):
     try:
-        from duckduckgo_search import DDGS
+        from ddgs import DDGS
     except ImportError:
-        print("ERROR: duckduckgo-search not installed. Run 'pip install duckduckgo-search'")
-        return []
+        try:
+            from duckduckgo_search import DDGS
+        except ImportError:
+            print("ERROR: ddgs not installed. Run 'pip install ddgs'")
+            return []
 
     print(f"Searching DuckDuckGo for: {query} (Limit: {max_results})")
     try:
