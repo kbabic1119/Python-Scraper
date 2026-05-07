@@ -263,18 +263,113 @@ button[kind="primary"] {
 st.markdown("<h1>⬡ AI LEAD INTELLIGENCE ENGINE</h1>", unsafe_allow_html=True)
 st.markdown("<p style='color:#4a6080; font-family:JetBrains Mono,monospace; font-size:0.78rem; letter-spacing:2px; margin-top:-10px;'>DEEP EXTRACTION SYSTEM v4.0 // GEMINI POWERED // AUTOMATION SCORING</p>", unsafe_allow_html=True)
 
+# ─── AUTO-FILL KEYS: st.secrets > .env > env vars ────────────────────────────
+def _get_key(name):
+    """Read key from st.secrets (Streamlit Cloud), then .env / env vars."""
+    try:
+        val = st.secrets.get(name, "")
+        if val:
+            return val
+    except Exception:
+        pass
+    return os.environ.get(name, "")
+
+def _check_serpapi_usage(key):
+    """Check SerpApi account usage. Returns (used, total) or None."""
+    if not key:
+        return None
+    try:
+        import requests as _req
+        resp = _req.get("https://serpapi.com/account.json", params={"api_key": key}, timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            total = data.get("searches_per_month", 100)
+            used = data.get("this_month_usage", 0)
+            left = data.get("total_searches_left", total - used)
+            return {"used": used, "total": total, "left": left, "plan": data.get("plan_name", "Free")}
+    except Exception:
+        pass
+    return None
+
 # ─── SIDEBAR ─────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("<p style='font-family:JetBrains Mono,monospace;color:#00d4ff;font-size:0.8rem;letter-spacing:2px;'>// SYSTEM CONFIG</p>", unsafe_allow_html=True)
-    gmaps_key  = st.text_input("Google Maps API Key", type="password", value=os.environ.get("GOOGLE_MAPS_API_KEY",""))
-    gemini_key = st.text_input("Gemini API Key",      type="password", value=os.environ.get("GEMINI_API_KEY",""))
-    serpapi_key = st.text_input("SerpApi Key",         type="password", value=os.environ.get("SERPAPI_KEY",""))
+
+    # Auto-fill from st.secrets or .env
+    _default_gmaps  = _get_key("GOOGLE_MAPS_API_KEY")
+    _default_gemini = _get_key("GEMINI_API_KEY")
+    _default_serp   = _get_key("SERPAPI_KEY")
+
+    # Show status indicators for each key
+    _key_status = []
+    for _kname, _kval in [("Maps", _default_gmaps), ("Gemini", _default_gemini), ("SerpApi", _default_serp)]:
+        if _kval:
+            _key_status.append(f"<span style='color:#00ffa3;'>● {_kname}</span>")
+        else:
+            _key_status.append(f"<span style='color:#4a6080;'>○ {_kname}</span>")
+    st.markdown(f"<p style='font-size:0.75rem;font-family:JetBrains Mono,monospace;'>{' &nbsp; '.join(_key_status)}</p>", unsafe_allow_html=True)
+
+    gmaps_key  = st.text_input("Google Maps API Key", type="password", value=_default_gmaps)
+    gemini_key = st.text_input("Gemini API Key",      type="password", value=_default_gemini)
+    serpapi_key = st.text_input("SerpApi Key",         type="password", value=_default_serp)
 
     if st.button("💾 Save Keys"):
         with open(".env","w") as f:
             f.write(f"GOOGLE_MAPS_API_KEY={gmaps_key}\nGEMINI_API_KEY={gemini_key}\nSERPAPI_KEY={serpapi_key}\n")
+        os.environ["GOOGLE_MAPS_API_KEY"] = gmaps_key
+        os.environ["GEMINI_API_KEY"] = gemini_key
+        os.environ["SERPAPI_KEY"] = serpapi_key
         st.success("Keys saved to .env")
         load_dotenv(override=True)
+        st.rerun()
+
+    # Tip for permanent auto-fill on Streamlit Cloud
+    with st.expander("💡 Auto-fill keys permanently"):
+        st.markdown("""
+**Streamlit Cloud:** Go to your app settings → Secrets, and add:
+```
+GOOGLE_MAPS_API_KEY = "your-key"
+GEMINI_API_KEY = "your-key"
+SERPAPI_KEY = "your-key"
+```
+Keys will auto-fill every time you open the app.
+""", unsafe_allow_html=True)
+
+    # ── API USAGE METERS ────────────────────────────────────────────────
+    st.markdown("<p style='font-family:JetBrains Mono,monospace;color:#ffb800;font-size:0.8rem;letter-spacing:2px;margin-top:8px;'>// API USAGE</p>", unsafe_allow_html=True)
+
+    # DuckDuckGo — always free
+    st.markdown("<span style='font-size:0.75rem;font-family:JetBrains Mono,monospace;color:#00ffa3;'>🦆 DuckDuckGo: <strong>FREE</strong> ∞ unlimited</span>", unsafe_allow_html=True)
+
+    # SerpApi usage
+    if serpapi_key:
+        serp_usage = _check_serpapi_usage(serpapi_key)
+        if serp_usage:
+            _used = serp_usage["used"]
+            _total = serp_usage["total"]
+            _left = serp_usage["left"]
+            _plan = serp_usage["plan"]
+            _pct = min(_used / max(_total, 1), 1.0)
+            _color = "#00ffa3" if _pct < 0.7 else ("#ffb800" if _pct < 0.9 else "#ff4466")
+            st.markdown(f"<span style='font-size:0.75rem;font-family:JetBrains Mono,monospace;color:{_color};'>🔎 SerpApi: <strong>{_used}/{_total}</strong> ({_plan})</span>", unsafe_allow_html=True)
+            st.progress(_pct)
+        else:
+            st.markdown("<span style='font-size:0.75rem;font-family:JetBrains Mono,monospace;color:#4a6080;'>🔎 SerpApi: could not fetch usage</span>", unsafe_allow_html=True)
+    else:
+        st.markdown("<span style='font-size:0.75rem;font-family:JetBrains Mono,monospace;color:#4a6080;'>🔎 SerpApi: no key — <a href='https://serpapi.com/manage-api-key' target='_blank'>get free key</a></span>", unsafe_allow_html=True)
+
+    # Gemini usage
+    if gemini_key:
+        st.markdown("<span style='font-size:0.75rem;font-family:JetBrains Mono,monospace;color:#00d4ff;'>🤖 Gemini: <strong>Free tier</strong> 15 RPM / 1,500 RPD</span>", unsafe_allow_html=True)
+        st.caption("Google Pro may give higher limits. Check [AI Studio](https://aistudio.google.com/app/apikey)")
+    else:
+        st.markdown("<span style='font-size:0.75rem;font-family:JetBrains Mono,monospace;color:#4a6080;'>🤖 Gemini: no key — <a href='https://aistudio.google.com/app/apikey' target='_blank'>get free key</a></span>", unsafe_allow_html=True)
+
+    # Google Maps usage
+    if gmaps_key:
+        st.markdown("<span style='font-size:0.75rem;font-family:JetBrains Mono,monospace;color:#00d4ff;'>🗺 Maps: <strong>$200/mo free</strong> credit (~10K calls)</span>", unsafe_allow_html=True)
+    else:
+        st.markdown("<span style='font-size:0.75rem;font-family:JetBrains Mono,monospace;color:#4a6080;'>🗺 Maps: no key — <a href='https://console.cloud.google.com/apis/credentials' target='_blank'>get free key</a></span>", unsafe_allow_html=True)
 
     st.markdown("---")
 
