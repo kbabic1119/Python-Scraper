@@ -267,10 +267,11 @@ with st.sidebar:
     st.markdown("<p style='font-family:JetBrains Mono,monospace;color:#00d4ff;font-size:0.8rem;letter-spacing:2px;'>// SYSTEM CONFIG</p>", unsafe_allow_html=True)
     gmaps_key  = st.text_input("Google Maps API Key", type="password", value=os.environ.get("GOOGLE_MAPS_API_KEY",""))
     gemini_key = st.text_input("Gemini API Key",      type="password", value=os.environ.get("GEMINI_API_KEY",""))
+    serpapi_key = st.text_input("SerpApi Key",         type="password", value=os.environ.get("SERPAPI_KEY",""))
 
     if st.button("💾 Save Keys"):
         with open(".env","w") as f:
-            f.write(f"GOOGLE_MAPS_API_KEY={gmaps_key}\nGEMINI_API_KEY={gemini_key}\n")
+            f.write(f"GOOGLE_MAPS_API_KEY={gmaps_key}\nGEMINI_API_KEY={gemini_key}\nSERPAPI_KEY={serpapi_key}\n")
         st.success("Keys saved to .env")
         load_dotenv(override=True)
 
@@ -380,6 +381,7 @@ with st.container(border=True):
 env = os.environ.copy()
 if gmaps_key:  env["GOOGLE_MAPS_API_KEY"] = gmaps_key
 if gemini_key: env["GEMINI_API_KEY"]      = gemini_key
+if serpapi_key: env["SERPAPI_KEY"]         = serpapi_key
 env["PYTHONUNBUFFERED"] = "1"
 
 if "last_error" not in st.session_state: st.session_state["last_error"] = None

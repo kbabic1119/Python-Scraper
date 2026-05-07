@@ -9,7 +9,7 @@ You can access the live dashboard here:
 ## Features
 
 - **Multi-Source Lead Discovery** — Gemini AI, Google Maps, DuckDuckGo, SerpApi
-- **Deep Website Scraping** — Smart text extraction (strips nav/footer/scripts for cleaner data), email/phone extraction with scoring, social media link detection
+- **Deep Website Scraping** — Smart text extraction with Playwright fallback for JS-heavy sites, email/phone extraction with scoring, social media link detection
 - **AI Business Analysis** — Automation scoring, pain point detection, tech stack identification, outreach email generation
 - **Token-Efficient** — Clean HTML extraction reduces Gemini API token usage by ~60%, structured JSON output eliminates parse failures
 - **Smart Caching** — Skips already-scraped URLs and already-analyzed companies on reruns
@@ -25,8 +25,11 @@ You can access the live dashboard here:
 
 ```bash
 pip install -r requirements.txt
+playwright install chromium    # install browser for JS rendering
 streamlit run app.py
 ```
+
+> **Note:** `playwright install chromium` downloads a Chromium browser (~130 MB) used to scrape JS-heavy websites. This is optional — if Playwright is not installed, the scraper uses `requests` only.
 
 ## Environment Variables
 
