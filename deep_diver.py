@@ -428,15 +428,33 @@ def process_row(index, row, total):
 
 
 def main():
-    input_file  = "leads.csv"
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input", default="leads.csv", help="Input CSV file")
+    parser.add_argument("--min-pain-score", type=int, default=0, help="Minimum pain score filter")
+    args = parser.parse_args()
+
+    input_file  = args.input
     output_file = "enriched_leads.csv"
 
+    # Fallback: if specified input doesn't exist, try leads.csv
     if not os.path.exists(input_file):
-        print(f"ERROR: {input_file} not found. Run lead_finder.py first.")
-        return
+        if input_file != "leads.csv" and os.path.exists("leads.csv"):
+            input_file = "leads.csv"
+        else:
+            print(f"ERROR: {input_file} not found. Run lead_finder.py first.")
+            return
 
     print(f"Reading {input_file}...")
     df = pd.read_csv(input_file)
+
+    # Apply pain score filter if Pain Score column exists
+    if "Pain Score" in df.columns and args.min_pain_score > 0:
+        before_filter = len(df)
+        df = df[pd.to_numeric(df["Pain Score"], errors="coerce").fillna(0) >= args.min_pain_score]
+        filtered_out = before_filter - len(df)
+        if filtered_out > 0:
+            print(f"Pain filter: removed {filtered_out} leads below score {args.min_pain_score}. Keeping {len(df)}.")
 
     if "Website URL" not in df.columns:
         print("ERROR: 'Website URL' column not found.")
