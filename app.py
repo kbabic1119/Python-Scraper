@@ -496,13 +496,38 @@ with tab_discover:
                 progress_bar.progress(1.0)
             st.rerun()
 
-    # Show found count
-    found_n = get_count("leads.csv")
+    # Show found leads directly on Discovery tab
+    found_df = safe_read_csv("leads.csv")
+    found_n = len(found_df)
     if found_n > 0:
-        st.success(f"**{found_n}** leads in leads.csv — go to **Processing** tab to score them.")
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown(f"<p style='font-family:JetBrains Mono,monospace;color:#00ffa3;font-size:0.8rem;letter-spacing:2px;'>// FOUND LEADS ({found_n})</p>", unsafe_allow_html=True)
+        st.info(f"**{found_n}** leads found. Go to **Processing** tab to score them, or **Results** tab for full management.")
 
-    # Empty state
-    if found_n == 0:
+        # Show lead cards right here
+        show_leads = found_df.head(12)
+        cols_per_row = 3
+        for i in range(0, len(show_leads), cols_per_row):
+            row_chunk = show_leads.iloc[i:i+cols_per_row]
+            cols = st.columns(cols_per_row)
+            for col, (_, lead) in zip(cols, row_chunk.iterrows()):
+                with col:
+                    _name = str(lead.get("Company Name", "Unknown"))[:50]
+                    _url = str(lead.get("Website URL", ""))
+                    _src = str(lead.get("Source", ""))
+                    _url_href = _url if _url.startswith("http") else f"https://{_url}"
+                    _url_short = _url.replace("https://","").replace("http://","")[:40]
+                    st.markdown(f"""
+                    <div class='lead-card'>
+                        <div class='company'>{_name}</div>
+                        <div class='url'>🔗 <a href='{_url_href}' target='_blank' style='color:#00d4ff;text-decoration:none;'>{_url_short}</a></div>
+                        <div style='margin-top:6px;'><span class='info-pill' style='color:#4a6080;'>{_src}</span></div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+        if found_n > 12:
+            st.caption(f"Showing first 12 of {found_n} — see **Results & Management** tab for all leads.")
+    else:
         st.markdown("""
 <div style='text-align:center;padding:40px 20px;border:1px dashed #0e2040;border-radius:16px;margin-top:20px;'>
   <p style='font-family:JetBrains Mono,monospace;color:#1a3060;font-size:2.5rem;margin:0;'>⬡</p>
