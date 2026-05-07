@@ -7,6 +7,13 @@ import time
 import concurrent.futures
 from urllib.parse import urlparse, urljoin
 
+# Playwright is optional — used as fallback for JS-heavy sites
+try:
+    from playwright.sync_api import sync_playwright
+    PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    PLAYWRIGHT_AVAILABLE = False
+
 # ── Junk patterns to filter out ──────────────────────────────────────────────
 JUNK_EMAIL_PATTERNS = [
     'noreply', 'no-reply', 'donotreply', 'privacy', 'gdpr', 'legal',
@@ -265,8 +272,34 @@ def find_subpages(soup, base_url):
     return unique_links
 
 
+def scrape_with_playwright(url):
+    """Use Playwright to render JS-heavy pages. Returns (html_content, status)."""
+    if not PLAYWRIGHT_AVAILABLE:
+        return None, "Playwright not installed"
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True, args=['--no-sandbox', '--disable-gpu'])
+            context = browser.new_context(
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                viewport={'width': 1280, 'height': 720},
+            )
+            page = context.new_page()
+            page.goto(url, timeout=15000, wait_until='domcontentloaded')
+            # Wait briefly for JS to render dynamic content
+            page.wait_for_timeout(2000)
+            html = page.content()
+            browser.close()
+            return html, "OK"
+    except Exception as e:
+        return None, f"Playwright error: {str(e)[:60]}"
+
+
 def scrape_website(url, site_domain=""):
-    """Visit website and its subpages for deep intelligence."""
+    """Visit website and its subpages for deep intelligence.
+    
+    Uses requests first (fast). Falls back to Playwright for JS-heavy sites
+    that return very little text content (<200 chars).
+    """
     try:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -275,20 +308,45 @@ def scrape_website(url, site_domain=""):
         if not url.startswith('http'):
             url = 'https://' + url
 
-        # 1. Scrape Homepage
-        response = requests.get(url, headers=headers, timeout=12)
-        response.raise_for_status()
+        # 1. Try scraping with requests first (fast)
+        used_playwright = False
+        try:
+            response = requests.get(url, headers=headers, timeout=12)
+            response.raise_for_status()
+            html_content = response.text
+        except Exception as req_err:
+            # If requests fails entirely, try Playwright
+            if PLAYWRIGHT_AVAILABLE:
+                print(f"  requests failed ({req_err}), trying Playwright...")
+                html_content, pw_status = scrape_with_playwright(url)
+                if html_content is None:
+                    return _empty_result(f'Failed: {str(req_err)[:40]}')
+                used_playwright = True
+            else:
+                raise req_err
 
-        soup = BeautifulSoup(response.text, 'html.parser')
-
-        # Extract clean text (strips nav, footer, scripts, etc.)
+        soup = BeautifulSoup(html_content, 'html.parser')
         homepage_text = clean_html_text(soup)
-        emails = extract_emails(response.text, url)
+
+        # If requests returned very little text, try Playwright as fallback
+        if not used_playwright and len(homepage_text) < 200 and PLAYWRIGHT_AVAILABLE:
+            print(f"  Thin content ({len(homepage_text)} chars), trying Playwright...")
+            pw_html, pw_status = scrape_with_playwright(url)
+            if pw_html:
+                pw_soup = BeautifulSoup(pw_html, 'html.parser')
+                pw_text = clean_html_text(pw_soup)
+                if len(pw_text) > len(homepage_text):
+                    soup = pw_soup
+                    homepage_text = pw_text
+                    html_content = pw_html
+                    used_playwright = True
+
+        emails = extract_emails(html_content, url)
         phones = extract_phones(homepage_text)
         socials = extract_socials(soup)
         fallback_name = extract_company_name_from_html(soup, url)
 
-        # 2. Find and crawl subpages
+        # 2. Find and crawl subpages (always use requests for speed)
         full_text = homepage_text
         subpages = find_subpages(soup, url)
         for sub in subpages:
@@ -308,8 +366,9 @@ def scrape_website(url, site_domain=""):
         emails = list(dict.fromkeys(emails))[:3]
         phones = list(dict.fromkeys(phones))[:3]
 
+        status = 'Success (Playwright)' if used_playwright else 'Success (Deep Crawl)'
         return {
-            'Website Text': full_text[:5000],  # Reduced from 8000 — clean text is more dense
+            'Website Text': full_text[:5000],
             'Emails':  ", ".join(emails),
             'Phones':  ", ".join(phones),
             'FB':      socials['FB'],
@@ -318,7 +377,7 @@ def scrape_website(url, site_domain=""):
             'TW':      socials.get('TW', ''),
             'YT':      socials.get('YT', ''),
             'Fallback Name': fallback_name,
-            'Status':  'Success (Deep Crawl)'
+            'Status':  status,
         }
 
     except requests.exceptions.Timeout:
@@ -405,11 +464,13 @@ def main():
             return
 
     total = len(df)
-    print(f"Starting scrape for {total} leads (20 concurrent threads)...")
+    # Use fewer threads when Playwright is available (browsers are resource-heavy)
+    max_threads = 8 if PLAYWRIGHT_AVAILABLE else 20
+    print(f"Starting scrape for {total} leads ({max_threads} concurrent threads, Playwright: {'ON' if PLAYWRIGHT_AVAILABLE else 'OFF'})...")
     start = time.time()
 
     results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_threads) as executor:
         futures = {
             executor.submit(process_row, i, row, total): i
             for i, (_, row) in enumerate(df.iterrows())
